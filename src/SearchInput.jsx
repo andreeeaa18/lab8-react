@@ -7,6 +7,10 @@ import useFavorites from "./hooks/useFavorites";
 
 export const spaceContext = createContext();
 
+const CACHE_KEY = "NASA_EPIC_CACHE";
+const CACHE_TIMESTAMP_KEY = "NASA_EPIC_CACHE_TIMESTAMP";
+const CACHE_TTL = 5 * 60 * 1000;
+
 function SearchInput() {
   const [inputValue, setInputValue] = useState("");
   const [mostRecent, setMostRecent] = useState(false);
@@ -21,15 +25,33 @@ function SearchInput() {
     refetch,
   } = useQuery({
     queryKey: ["nasa-epic-natural"],
-    queryFn: () =>
-      fetch(
-        "https://epic.gsfc.nasa.gov/api/natural?api_key=8mCbugQFL7t8WyOuZhzNkuQafB6ntPmifaFZKoyV",
-      ).then((r) => {
-        if (!r.ok) {
-          throw new Error("Failed to fetch data");
+    queryFn: async () => {
+      const cachedData = localStorage.getItem(CACHE_KEY);
+      const cachedTimestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY);
+
+      if (cachedData && cachedTimestamp) {
+        const age = Date.now() - parseInt(cachedTimestamp, 10);
+
+        if (age < CACHE_TTL) {
+          console.log("Loading from localStorage cache");
+          return JSON.parse(cachedData);
         }
-        return r.json();
-      }),
+      }
+
+      console.log("Fetching fresh data from API");
+      const response = await fetch(
+        "https://epic.gsfc.nasa.gov/api/natural?api_key=8mCbugQFL7t8WyOuZhzNkuQafB6ntPmifaFZKoyV",
+      );
+      if (!response.ok) {
+        throw new Error("Failed to fetch data");
+      }
+      const freshData = await response.json();
+
+      localStorage.setItem(CACHE_KEY, JSON.stringify(freshData));
+      localStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
+
+      return freshData;
+    },
     staleTime: 5 * 60 * 1000,
   });
 
@@ -46,7 +68,9 @@ function SearchInput() {
   if (loading) {
     return (
       <div className="loading-container">
-        <div className="loading-spinner">Loading NASA EPIC images...</div>
+        <div className="loading-spinner">
+          Welcome to NASA EPIC Loading images...
+        </div>
       </div>
     );
   }
@@ -88,6 +112,12 @@ function SearchInput() {
 
   function handleBackToGridFromFavorites() {
     setCurrentView("grid");
+  }
+
+  function handleRefresh() {
+    localStorage.removeItem(CACHE_KEY);
+    localStorage.removeItem(CACHE_TIMESTAMP_KEY);
+    refetch();
   }
 
   const contextValue = {
@@ -138,7 +168,7 @@ function SearchInput() {
                   Favorites
                 </button>
 
-                <button onClick={refetch} className="filter-button">
+                <button onClick={handleRefresh} className="filter-button">
                   Refresh
                 </button>
               </div>
